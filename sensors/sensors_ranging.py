@@ -126,4 +126,4 @@ class RangingSensor2DT(RangingSensorT,Linear2DActorT):
     def __init__(self,n_static=0):
         super().__init__(dim=2,n_static=n_static)
     
-__all__=['RangingSensor3DFull','RangingSensor3DFullT','RangingSensor3D2D','RangingSensor3D2DT','RangingSensor2D','RangingSensor2DT']
+__all__=['RangingSensor','RangingSensorT','RangingSensor3DFull','RangingSensor3DFullT','RangingSensor3D2D','RangingSensor3D2DT','RangingSensor2D','RangingSensor2DT']

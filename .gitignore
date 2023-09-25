@@ -1,7 +1,9 @@
 *.DS_Store
 *.gif
 *.pdf
+*.png
 img/*
-.ipynb_checkpoints/*
+.ipynb_checkpoints
+**/.ipynb_checkpoints
 __pycache__/*
 
