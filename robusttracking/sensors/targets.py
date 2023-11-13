@@ -23,4 +23,3 @@ class Target2DT(Linear2DActorT):
     def __init__(self):
         super().__init__(n_static=0)
     
-__all__=['Target3D','Target3DT','Target2D','Target2DT']

@@ -101,7 +101,7 @@ def estimate_mle(sensors,xs,obs,initial_guess):
     if C_sqt.shape[1]<dim:
         C_ = zeros((n_target,dim,dim))
         for i in range(n_target):
-            C_[i,:,:] = eye(dim)
+            C_[i,C_sqt.shape[1]:,C_sqt.shape[1]:] = C_sqt[i,:,:]
             C_[i,:C_sqt.shape[1],:C_sqt.shape[1]] = C_sqt[i,:,:]
     
         C_sqt = C_

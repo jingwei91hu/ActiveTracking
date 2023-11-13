@@ -18,4 +18,3 @@ def q_alpha_d(dim,alpha=0.05):
 def is_ranging(sensor):
     return isinstance(sensor,RangingSensor)|isinstance(sensor,RangingSensorT)
             
-__all__=['observe','q_alpha_d','is_ranging']

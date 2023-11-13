@@ -53,13 +53,15 @@ class Actor(ABC):
         x_[:,self.n_static:] += B@u
         return x_
     
+    def _predictC(self,C,Q,F,B):
+        return F@C@F.T+B@Q@B.T
+    
     @abstractmethod
     def transition(self,x,u):
         pass
     
-    @staticmethod
     @abstractmethod
-    def getF():
+    def predictC(self,C,Q):
         pass
 
 class Linear3DFullActor(Actor):
@@ -69,8 +71,8 @@ class Linear3DFullActor(Actor):
     def transition(self,x,u):
         return self._transition(x,u,F3D,B3D_Full)
     
-    def getF():
-        return F3D
+    def predictC(self,C,Q):
+        return self._predictC(C,Q,F3D,B3D_Full)
     
 class Linear3D2DActor(Actor):
     def __init__(self,*args, **kwargs):
@@ -79,8 +81,8 @@ class Linear3D2DActor(Actor):
     def transition(self,x,u):
         return self._transition(x,u,F3D,B3D_2D)
     
-    def getF():
-        return F3D
+    def predictC(self,C,Q):
+        return self._predictC(C,Q,F3D,B3D_2D)
     
 class Linear3DFullActorT(Actor):
     def __init__(self,*args, **kwargs):
@@ -89,8 +91,8 @@ class Linear3DFullActorT(Actor):
     def transition(self,x,u):
         return self._transition(x,u,TF3D,TB3D_Full)
     
-    def getF():
-        return TF3D
+    def predictC(self,C,Q):
+        return self._predictC(C,Q,TF3D,TB3D_Full)
     
 class Linear3D2DActorT(Actor):
     def __init__(self,*args, **kwargs):
@@ -99,9 +101,9 @@ class Linear3D2DActorT(Actor):
         
     def transition(self,x,u):
         return self._transition(x,u,TF3D,TB3D_2D)
-    
-    def getF():
-        return TF3D
+
+    def predictC(self,C,Q):
+        return self._predictC(C,Q,TF3D,TB3D_2D)
     
 class Linear2DActor(Actor):
     def __init__(self,*args, **kwargs):
@@ -110,8 +112,8 @@ class Linear2DActor(Actor):
     def transition(self,x,u):
         return self._transition(x,u,F2D,B2D)
     
-    def getF():
-        return F2D
+    def predictC(self,C,Q):
+        return self._predictC(C,Q,F2D,B2D)
     
 class Linear2DActorT(Actor):
     def __init__(self,*args, **kwargs):
@@ -120,7 +122,6 @@ class Linear2DActorT(Actor):
     def transition(self,x,u):
         return self._transition(x,u,TF2D,TB2D)
     
-    def getF():
-        return TF2D
+    def predictC(self,C,Q):
+        return self._predictC(C,Q,TF2D,TB2D)
     
-__all__=['Linear3DFullActor','Linear3D2DActor','Linear3DFullActorT','Linear3D2DActorT','Linear2DActor','Linear2DActorT']

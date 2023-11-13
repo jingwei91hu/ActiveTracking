@@ -13,20 +13,21 @@ def fisher_information_torch(mu,cov,d_mu,d_cov):
                 I[k,i,j] = d_mu[k,[i],:]@inv_cov@d_mu[k,[j],:].T + 0.5*trace(inv_cov@d_cov[k,i,:,:]@inv_cov@d_cov[k,j,:,:])
     return I
 
-def crlb_torch(mu,cov,d_mu,d_cov,kappa = 1):
+def crlb_torch(mu,cov,d_mu,d_cov,W,c_hat = None):
     f = fisher_information_torch(mu,cov,d_mu,d_cov)
     n_targets,dim,dim = f.shape
     
-    W = eye(dim)
-    if kappa!=1:
-        W[dim//2:,dim//2:] = eye(dim//2)*kappa
-    
     J = 0
     for i in range(n_targets):
-        lb = inv(f[i])
+        if c_hat==None:
+            lb = inv(f[i])
+        else:
+            fi = torch.zeros(c_hat[i,:,:].shape)
+            fi +=c_hat[i,:,:]
+            fi[:dim,:dim]+=f[i]
+            lb = inv(fi)
+            
         J += trace(W@lb)
         
     return J
 
-
-__all__=['crlb_torch']

@@ -139,4 +139,3 @@ class DopplerSensor3D2DT(DopplerSensorT,Linear3D2DActorT):
         super().__init__(n_static=n_static,noise=noise)
         
         
-__all__=['DopplerSensorFull','DopplerSensorFullT','DopplerSensor3D2D','DopplerSensor3D2DT']

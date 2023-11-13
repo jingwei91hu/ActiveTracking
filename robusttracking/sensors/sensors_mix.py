@@ -139,4 +139,3 @@ class MixedRangingDoppler3DFullT(Sensor):
         return dcov
     
     
-__all__=['MixedRangingDoppler3DFull','MixedRangingDoppler3DFullT']
