@@ -83,6 +83,7 @@ class RangingSensor(Sensor):
                 dcov[i,j] = diag(2*mu[i]*dmu[i,j])
         dcov *= (alpha*(ci**2))
         return dcov
+    
 class RangingSensorT(Sensor): 
     def __init__(self,dim=3,*args, **kwargs):
         super().__init__(*args, **kwargs)

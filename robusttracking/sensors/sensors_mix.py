@@ -77,7 +77,7 @@ class MixedRangingDoppler3DFull(Sensor):
     
 class MixedRangingDoppler3DFullT(Sensor): 
     
-    def __init__(self,n_rangingsensor,n_static_ranging,n_static_doppler,doppler_noise=1):
+    def __init__(self,n_rangingsensor,n_static_ranging=0,n_static_doppler=0,doppler_noise=1):
         self.n_rangingsensor = n_rangingsensor
         self.n_static_ranging = n_static_ranging
         self.n_static_doppler = n_static_doppler
