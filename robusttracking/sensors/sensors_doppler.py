@@ -10,6 +10,8 @@ from numpy import array,trace,diag,zeros,ones,full,concatenate
 import torch
 
 
+import jax.numpy as jnp
+
 torch.set_default_tensor_type(torch.DoubleTensor)
 ci = (1e-8)/3
 fc = 2.3*1e9
@@ -122,7 +124,56 @@ class DopplerSensorT(Sensor):
             self.s_deri = torch.zeros((n_targets,dim,n_sensors,n_sensors))
         return self.s_deri
     
+class DopplerSensorJ(Sensor):
+    def __init__(self,noise=1,*args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.noise = noise
+        self.sigma = np.zeros(1)
+        self.s_deri = np.zeros(1)
+        self.eep = jnp.array(eep)
+        self.eev = jnp.array(eev)
+        self.eepp = jnp.array(eepp)
+        self.epep = jnp.array(epep)
+        
+    def hx(self,x,xs):
+        '''mapping states to observations'''
+        v = (jnp.expand_dims(x,2)-jnp.expand_dims(xs,1)).swapaxes(0,1)
+        d = jnp.linalg.norm(self.eep@v,axis=1) + (1e-20)
+        return -fc*ci*jnp.einsum('ijk,ijk->ik',self.eev@v,self.eep@v)/d
+    
+    def H(self,x,xs):
+        '''Jocobian of hx at x'''
+        v = (jnp.expand_dims(x,2)-jnp.expand_dims(xs,1)).swapaxes(0,1)
+        d = jnp.linalg.norm(self.eep@v,axis=1,keepdims=True) + (1e-20)
+        s = jnp.expand_dims(jnp.einsum('ijk,ijk->ik',self.eev@v,self.eep@v),1)
+        HM = (-fc*ci*(self.epep@v/d -  self.eepp@v/(d**3) * s))
+        return HM
+    
+    def sx(self,x,xs):
+        '''mapping states to noise'''
+        n_targets = x.shape[-1]
+        n_sensors = xs.shape[-1]
+
+        if self.sigma.shape!=(n_targets,n_sensors,n_sensors):
+            self.sigma = np.zeros((n_targets,n_sensors,n_sensors))
+            for i in range(n_targets):
+                self.sigma[i] = diag(ones(n_sensors))*self.noise
+            
+        return jnp.array(self.sigma)
+    
+    def S(self,x,xs):
+        '''Jocobian of sx at x'''
+        dim,n_targets = x.shape
+        n_sensors = xs.shape[-1]
+        if self.s_deri.shape!=(n_targets,dim,n_sensors,n_sensors):
+            self.s_deri = np.zeros((n_targets,dim,n_sensors,n_sensors))
+        return jnp.array(self.s_deri)
+    
 class DopplerSensorFull(DopplerSensor,Linear3DFullActor):
+    def __init__(self,n_static=0,noise=1):
+        super().__init__(n_static=n_static,noise=noise)
+        
+class DopplerSensorFullJ(DopplerSensorJ,Linear3DFullActorJ):
     def __init__(self,n_static=0,noise=1):
         super().__init__(n_static=n_static,noise=noise)
         

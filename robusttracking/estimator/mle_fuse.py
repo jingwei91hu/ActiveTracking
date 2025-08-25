@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-from scipy.optimize import minimize
+from scipy.optimize import minimize,basinhopping
+
 
 import numpy as np
 from numpy.linalg import norm,inv,pinv,slogdet,matrix_rank
@@ -9,9 +10,42 @@ from multiprocess import Pool
 from copy import deepcopy,copy
 
 from robusttracking.estimator.utils import neglog_gaussian,fisher_information,weighted_l2
+from robusttracking.estimator.sigma_points import get_sigmoid_points
 
+def cost(*params):
+    x,sensors,x_pred,inv_cov_pred,xs,obs = params
+    #observation
+    n_targets = obs.shape[0]
+    dim = int(len(x)/n_targets)
+    x = array(x).reshape((dim,n_targets))
+    mu = sensors.hx(x,xs)
+    cov = sensors.sx(x,xs)
+    dmu = sensors.H(x,xs)
+    dcov = sensors.S(x,xs)
+    
+    mux = x.T-x_pred.T
+    muo = obs-mu
+    n_targets = mu.shape[0]
+    ll1 = 0
+    ll2 = 0
+    for i in range(n_targets):
+        if cov[i].max()==np.inf:
+            icov = zeros(cov[i].shape)
+        else:
+            icov = inv(cov[i])  
+            
+        icov_muo = icov@muo[i,:]
+        muo_icov = muo[i,:].T@icov
+            
+        ll1 += muo_icov@muo[i,:] + slogdet(cov[i])[1]
+    
+        igamma_mux = inv_cov_pred[i]@mux[i,:]
+        ll2 += mux[i,:].T@igamma_mux
 
-def f_and_df(*params):
+                
+    return ll1,ll2
+
+def f_and_df(*params):#validated with autodiff jacobian
     x,sensors,x_pred,inv_cov_pred,xs,obs = params
     #observation
     n_targets = obs.shape[0]
@@ -83,9 +117,13 @@ def error_fuse(f,inv_cov_pred):
                 
             fi[:fd,:fd] += f[i]
             C_[i] = inv(fi)
-            C_sqt[i] = cholesky(C_[i]).T
-            crb_p+=trace(C_sqt[i,:d,:d])
-            crb_v+=trace(C_sqt[i,d:,d:])
+            try:
+                C_sqt[i] = cholesky(C_[i]).T
+            except:
+                C_sqt[i] = np.diag(np.sqrt(np.diag(C_[i])))
+            crb_p+=np.sqrt(trace(C_[i,:d,:d]))
+            crb_v+=np.sqrt(trace(C_[i,d:,d:]))
+                
         except:
             C_sqt[i,:,:] = 1e6*eye(2*d)
             C_[i,:,:] = 1e12*eye(2*d)
@@ -113,11 +151,15 @@ def multiple_start_points(x_pred,xs):
                 x_inits.append(x_)
     return x_inits
 
+
 def task(pargs):
     x_init,args = pargs
     (sensors,x_pred,inv_cov_pred,xs,obs) = args
-    return minimize(f_and_df,x0=x_init.flatten(),args=(deepcopy(sensors),copy(x_pred),copy(inv_cov_pred),copy(xs),copy(obs)),jac=True,method='L-BFGS-B',options={'gtol':1e-8,'maxiter':1000,'ftol':1e-8})
+    #return minimize(f_and_df,x0=x_init.flatten(),args=(deepcopy(sensors),copy(x_pred),copy(inv_cov_pred),copy(xs),copy(obs)),jac=True,method='L-BFGS-B',options={'gtol':1e-8,'maxiter':1000,'ftol':1e-8})
     
+    minimizer_kwargs = {"method": "L-BFGS-B","args":(deepcopy(sensors),copy(x_pred),copy(inv_cov_pred),copy(xs),copy(obs)),"jac":True,"options":{'gtol':1e-8,'ftol':1e-8}}
+    return basinhopping(f_and_df, x_init.flatten(), minimizer_kwargs=minimizer_kwargs,niter=200)
+
 def mle_fuse(sensors,x_pred,cov_pred,xs,obs,multistarts=False):
     x_shape = x_pred.shape
     _,n_targets = x_pred.shape
@@ -125,18 +167,21 @@ def mle_fuse(sensors,x_pred,cov_pred,xs,obs,multistarts=False):
     
     if multistarts:
         x_inits = multiple_start_points(x_pred,xs)
-        #print('multistarts',len(x_inits))
-        min_loss = 1e12
+        
+        #x_inits = get_sigmoid_points(x_pred,cov_pred)
+        print('multistarts',len(x_inits),x_inits)
+        min_loss = 1e24
         best_res = None
         with Pool() as pool:
             for res in pool.imap(task,[(x_inits[i],(sensors,x_pred,inv_cov_pred,xs,obs)) for i in range(len(x_inits))]):
                 if res.fun<min_loss:
                     min_loss = res.fun
                     best_res = res
-           
+        print(best_res)
         est = best_res.x.reshape(x_shape)
     else:
         res = task([x_pred,(sensors,x_pred,inv_cov_pred,xs,obs)])
+        print(res)
         est = res.x.reshape(x_shape)
     
     #variance bound of estimator

@@ -7,13 +7,13 @@ from torch import trace,zeros,eye,sigmoid,dot
 from torch.optim import Adam
 
 
-from .cost import crlb_torch
+from .cost import crlb_torch,barrier_cost
 from ..sensors import is_ranging
 
 def reparam(u,lower,upper): #reparameterize
     return sigmoid(u).mul(upper-lower)+lower
 
-def forward(sensor_torch,target_torch,x_s,x_t,u_s,u_t,v,rs,rt,rv,C_sqt,w,W,c_inv_hat = None):
+def forward(sensor_torch,target_torch,x_s,x_t,u_s,u_t,v,rs,rt,rv,C_sqt,w,W,rho=0,S=None,lb=None,ub=None,c_inv_hat = None):
     """ forward propagation of cost
     sensor_torch: simulation of sensors 
     target_torch: simulation of target
@@ -74,10 +74,13 @@ def forward(sensor_torch,target_torch,x_s,x_t,u_s,u_t,v,rs,rt,rv,C_sqt,w,W,c_inv
             L[k] = crlb_torch(mu,cov,d_mu,d_cov,W,c_inv_hat[k])
         else:
             L[k] = crlb_torch(mu,cov,d_mu,d_cov,W)
-    
-    return dot(L,w)
+            
+    if rho>0:
+        return dot(L,w) + rho*barrier_cost(x_s_,S,lb,ub)
+    else:
+        return dot(L,w)
 
-def step(sensor_torch,target_torch,opts,x_s,x_t,u_s,u_t,v,rs,rt,rv,C_sqt,w,W,c_inv_hat = None):
+def step(sensor_torch,target_torch,opts,x_s,x_t,u_s,u_t,v,rs,rt,rv,C_sqt,w,W,rho=0,S=None,lb=None,ub=None,c_inv_hat = None):
     """ One step of gradient method
     x_s: d x M, state of sensors
     x_t: d x N, state of targets
@@ -95,7 +98,7 @@ def step(sensor_torch,target_torch,opts,x_s,x_t,u_s,u_t,v,rs,rt,rv,C_sqt,w,W,c_i
     for opt in opts:
         opt.zero_grad()
    
-    loss = forward(sensor_torch,target_torch,x_s,x_t,u_s,u_t,v,rs,rt,rv,C_sqt,w,W,c_inv_hat = c_inv_hat)
+    loss = forward(sensor_torch,target_torch,x_s,x_t,u_s,u_t,v,rs,rt,rv,C_sqt,w,W,rho=rho,S=S,lb=lb,ub=ub,c_inv_hat = c_inv_hat)
         
     loss.backward()
     
@@ -132,7 +135,7 @@ def construct_W(dim,gamma=1):
         W[dim//2:,dim//2:] = gamma
     return W
 
-def move(K,sensor_torch,target_torch,x_s,x_t,lr,rs,rt,C_sqt,w,n_dynamic_sensors,is_target=True,n_iter = 1000, gamma = 1,regularize = False, Q = None):
+def move(K,sensor_torch,target_torch,x_s,x_t,lr,rs,rt,C_sqt,w,n_dynamic_sensors,rho=0,S=None,lb=None,ub=None,is_target=True,n_iter = 1000, gamma = 1,regularize = False, Q = None, init_u_t = None, init_u_s = None):
     """
      if is_target = True, rt works, otherwise rs works. 
      n_static only works when is_target=False
@@ -143,12 +146,14 @@ def move(K,sensor_torch,target_torch,x_s,x_t,lr,rs,rt,C_sqt,w,n_dynamic_sensors,
 
     if is_target:
         u_s = torch.zeros((K,*s_shape))
-        init_u_t = 0.01*np.random.randn(K,*t_shape)
-        init_u_t[:,:d,:] = 0
+        if init_u_t is None:
+            init_u_t = 0.01*np.random.randn(K,*t_shape)
+            init_u_t[:,:d,:] = 0
         u_t = torch.tensor(init_u_t, requires_grad = True)
     else:
-        init_u_s = 0.01*np.random.randn(K,s_shape[0],n_dynamic_sensors)
-        init_u_s[:,:d,:] = 0
+        if init_u_s is None:
+            init_u_s = 0.01*np.random.randn(K,s_shape[0],n_dynamic_sensors)
+            init_u_s[:,:d,:] = 0
         u_s = torch.tensor(init_u_s, requires_grad = True)
         u_t = torch.zeros((K,*t_shape))
         
@@ -173,7 +178,7 @@ def move(K,sensor_torch,target_torch,x_s,x_t,lr,rs,rt,C_sqt,w,n_dynamic_sensors,
         W = construct_W(2*d,gamma)
   
     for i in range (n_iter):
-        loss_val = step(sensor_torch,target_torch,opts,x_s,x_t,u_s,u_t,v,rs,rt,rv,C_sqt,w,W,c_inv_hat = c_inv_hat)
+        loss_val = step(sensor_torch,target_torch,opts,x_s,x_t,u_s,u_t,v,rs,rt,rv,C_sqt,w,W,rho=rho,S=S,lb=lb,ub=ub,c_inv_hat = c_inv_hat)
         losses.append(loss_val)
         if loss_val==np.inf:
             break
@@ -185,17 +190,21 @@ def move(K,sensor_torch,target_torch,x_s,x_t,lr,rs,rt,C_sqt,w,n_dynamic_sensors,
         
     return u,losses
 
-def robustmove(K,sensor_torch,target_torch,x_s,x_t,lr_s,lr_t,rs,rt,rv,C_sqt,w,n_dynamic_sensors,n_iter = 1000,gamma = 1, regularize = False,Q=None):
+def robustmove(K,sensor_torch,target_torch,x_s,x_t,lr_s,lr_t,rs,rt,rv,C_sqt,w,n_dynamic_sensors,rho=0,S=None,lb=None,ub=None,n_iter = 1000,gamma = 1, regularize = False,Q=None, init_u_t = None, init_u_s = None):
     s_shape = x_s.shape
     t_shape = x_t.shape
     d = s_shape[0]//2
     
-    init_u_s = 0.01*np.random.randn(K,s_shape[0],n_dynamic_sensors)
-    init_u_s[:,:d,:] = 0
+    
+    if init_u_s is None:
+        init_u_s = 0.01*np.random.randn(K,s_shape[0],n_dynamic_sensors)
+        init_u_s[:,:d,:] = 0
+        
     u_s = torch.tensor(init_u_s, requires_grad=True)
     
-    init_u_t = 0.01*np.random.randn(K,*t_shape)
-    init_u_t[:,:d,:] = 0
+    if init_u_t is None:
+        init_u_t = 0.01*np.random.randn(K,*t_shape)
+        init_u_t[:,:d,:] = 0
     u_t = torch.tensor(init_u_t, requires_grad=True)
     
     #uncertainty variable
@@ -221,9 +230,10 @@ def robustmove(K,sensor_torch,target_torch,x_s,x_t,lr_s,lr_t,rs,rt,rv,C_sqt,w,n_
         W = construct_W(2*d,gamma)
   
     for i in range (n_iter):
-        loss_val = step(sensor_torch,target_torch,opts,x_s,x_t,u_s,u_t,v,rs,rt,rv,C_sqt,w,W,c_inv_hat = c_inv_hat)
+        loss_val = step(sensor_torch,target_torch,opts,x_s,x_t,u_s,u_t,v,rs,rt,rv,C_sqt,w,W,rho=rho,S=S,lb=lb,ub=ub,c_inv_hat = c_inv_hat)
         losses.append(loss_val)
     
     u_s_val = reparam(u_s.detach(),*rs)
+    u_t_val = reparam(u_t.detach(),*rt)
     
-    return u_s_val,losses
+    return u_s_val,u_t_val,losses
